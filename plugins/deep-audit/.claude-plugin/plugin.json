@@ -1,9 +1,0 @@
-{
-  "name": "deep-audit",
-  "description": "Whole-project audit that finds and verifies bugs, data errors, missing functionality, UI/UX gaps, reliability issues, and security flaws across any layer - then reports them in plain language.",
-  "version": "1.0.0",
-  "author": {
-    "name": "Jay0073",
-    "url": "https://github.com/Jay0073"
-  }
-}
