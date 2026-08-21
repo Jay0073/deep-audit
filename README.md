@@ -6,6 +6,10 @@ library - and it reads the code end to end, verifies its findings against real
 runtime data, and returns plain-language issue rows you can paste straight into
 a tracker.
 
+[[Available on Skills.sh]<img width="1467" height="873" alt="image" src="https://github.com/user-attachments/assets/9d9e3923-eae5-42c5-ae24-af6d553553e3" />
+](https://www.skills.sh/jay0073/deep-audit/deep-audit)
+
+
 It audits the **whole project**, not just the code: correctness and data bugs,
 missing functionality, UI/UX and accessibility gaps, reliability and failure
 handling, and security. It reports only what it can prove, and it lists what it
