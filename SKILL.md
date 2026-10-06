@@ -1,215 +1,256 @@
 ---
 name: deep-audit
-description: "Deep, whole-project issue-finding audit of one module, page, API, worker, pipeline, SQL script, or feature. Reads code end-to-end, verifies findings against real runtime data, diffs duplicate implementations, and returns plain-language issue rows ready to paste into a tracker. Covers correctness, data, UI/UX, reliability, and security across the whole system, not just the code. Use when the user asks to review/audit/analyse anything for bugs, gaps, or defects. Language and stack agnostic."
-trigger: /deep-audit
+description: "Decision-oriented, intent-controlled audit of a project, feature, user journey, page, API, worker, pipeline, data layer, script, or library. Proves defects with real behavior, tests features from the user's perspective through their underlying logic, and distinguishes fix-now work, minor polish, and future risks. Can also turn an existing audit into sequential, read-only solution briefs and an implementation handoff. Use for logic/correctness, bug, launch-readiness, UX/UI, reliability, security, whole-project audits, or planning fixes from audit findings. Language and stack agnostic."
 ---
 
 # /deep-audit
 
-Find real defects in ONE unit of work at a time, prove each one, and report them as plain sentences a non-engineer can read.
+Find real defects, then make the harder judgment: which ones are worth the user's time now.
+
+An audit is successful when it supports a decision, not when it produces a long list.
 
 ## Usage
 
+```text
+/deep-audit <target>
+/deep-audit <target> "<hunch>"
+/deep-audit <target> before launch
+/deep-audit <journey> UX audit with browser testing
+/deep-audit the entire UI, including every minor reproducible issue
+/deep-audit <target> exhaustive hardening for <stated scale or threat model>
+/deep-audit resolve <audit report> one issue at a time without editing the project
 ```
-/deep-audit <target>                      # audit one unit
-/deep-audit <target> "<hunch>"            # seed it with what feels wrong
-/deep-audit                               # ask the user what to audit
-```
 
-`<target>` is whatever unit the project uses: a page, an API surface, a background worker, a queue, a data pipeline, a SQL script, a set of migrations, a CLI command, a library module, a service.
+The target may be one unit or a whole project. For a whole project, map broadly and spend depth according to the requested coverage: prioritize current journeys by default, or attempt every inventoried feature when explicitly asked. Do not pretend every file received equal scrutiny.
 
----
+## Non-negotiables
 
-## Prime directives
+**Audit and resolution planning are read-only.** Do not edit or refactor the audited project in either phase. Implementation is a separate, explicitly authorized request.
 
-**Report only. Never fix anything.** No edits, no refactors, no "while I was here". Fixing is a separate request.
+**Prove the behavior.** A possible weakness, absent best practice, suspicious line, or theoretical failure is not a finding. Demonstrate the current path and observable consequence or omit it.
 
-**Prove everything.** No "this might be", no "consider whether". If you cannot demonstrate it from the code or the data, either prove it or drop it. An audit that is 80% real and 20% speculation is worse than one with only the real findings, because the reader stops trusting all of it.
+**Separate truth from priority.** A defect can be real and still not deserve work now. Evaluate current reach, likelihood, consequence, recovery, and product horizon before assigning an action.
 
-**Disprove out loud.** Actively try to kill your own hypotheses before reporting them. A finding you disproved is nearly as valuable as one you confirmed, because it stops someone spending a day on a non-problem. Report what you ruled out.
+**No issue quota.** Never search until a familiar number of issues appears. Zero, three, or thirty may all be correct. Stop when the promised coverage is complete and candidates at the selected finding threshold are exhausted.
 
----
+**Honor the requested finding threshold.** In blocker or important-only audits, omit low-value polish. When the user explicitly requests deep UI detail, every minor issue, or all reproducible findings, include verified minor defects within the selected lens and label them as minor rather than filtering them out. Personal taste is not an objective defect unless it conflicts with a design system, product intent, internal consistency, or an explicit user request for design judgment.
 
-## Step 0 - Prerequisites, and asking
+**Stay read-only.** Use non-mutating observation where possible. If a runtime check needs a write, use disposable data or a transaction that is rolled back. Never touch production data or external systems without explicit authorization.
 
-Establish these before doing anything. **If any are missing and you cannot determine them yourself, ask the user.** Do not guess and do not proceed half-blind.
+## 1. Establish the decision context
 
-1. **What is the target?** If not given, list what you can see and ask.
-2. **Any hunches?** Ask: "Anything here that already feels wrong, or that you have doubts about?" A user hunch is the highest-value single input to an audit. If they have none, proceed anyway.
-3. **Can real behaviour be observed?** Look for a dev database, seeded environment, fixtures, a runnable local process, logs, a staging endpoint, sample input files, or a way to execute the thing in a sandbox. Find connection details the way the project does (env file, config module, compose file, settings module). If you find a source but cannot reach it, ask rather than silently falling back to code-only.
-4. **Orientation.** Read any CLAUDE.md, README, ARCHITECTURE, CONTRIBUTING, or docs index. Use it purely as a map. It will not contain the bugs.
+Infer these from the request, repository, current data, and product documentation before asking:
 
----
+- The decision: release now, improve a live product, investigate a hunch, improve a journey, prepare for stated growth, or perform exhaustive hardening.
+- The horizon: this release/current operation, the next iteration, or a stated future scale or threat model.
+- The people and workflows that matter most now.
+- Current or near-term load, data volume, deployment shape, and exposure.
+- Any hunch the user supplied.
+- The three independent audit settings:
+  - **Lens:** UX/UI, logic, data, reliability, security, performance, or a combination.
+  - **Coverage:** one flow, important journeys, every reachable feature, or the whole system.
+  - **Finding threshold:** release blockers, important issues, or all reproducible issues including minor polish.
 
-## Step 1 - Classify the target
+Ask one concise question only when the missing answer would materially change what belongs in `Fix before release`. Otherwise proceed with this default:
 
-**This step decides which checklist you use. Do not skip it.** Most targets are one primary kind plus one or two secondary kinds.
+> Audit the requested target and its important user journeys for safe use by current and next-release users at observed or documented near-term scale. Report important issues; treat unobserved future scale and unbuilt features as deferred conditions, not present blockers.
 
-| Kind | Looks like |
+State the inferred context at the top of the report so the user can correct it.
+
+Explicit inclusions and exclusions override every default. If the user says to report only current, first-customer, launch-blocking, or major issues, omit future-risk and minor sections rather than adding them for completeness.
+
+Publicly reachable security flaws, authorization failures, payment errors, privacy exposure, and plausible irreversible data loss are current concerns even for a small product. Do not dismiss them merely because traffic is low.
+
+## 2. Choose the audit intent and profile
+
+Do not collapse lens, coverage, and finding threshold into one vague idea of "depth."
+
+- **Release blockers / critical only:** Report only defects that plausibly block the stated decision or create serious current harm.
+- **Important issues:** Default. Report `Fix now`, `Fix next`, and material future risks only when they fall within the requested horizon; omit minor polish.
+- **All reproducible issues:** Select when the user says deep UI, every minor issue, exhaustive detail, or equivalent. Report evidence-backed minor defects within the selected lens and coverage, including visual, interaction, consistency, and polish issues when UI is in scope. Do not promote them to blockers.
+
+An explicit scope overrides the default filter. "Every minor UI issue" means exhaustive UI reporting, not exhaustive backend scalability analysis. "Major UX issues" means journey-level material problems, not every spacing difference.
+
+- **Launch readiness:** Use when the user is publishing or shipping. Concentrate on core journeys, first-use experience, auth, payments if present, data integrity, deploy/runtime failures, and recovery. Put future scale in `Watch` only when future risks are within scope; otherwise omit it unless the launch target makes the risk imminent.
+- **Standard:** Default for ordinary audits. Inspect the requested target deeply and follow defects across its live read/write boundaries.
+- **Logic/correctness:** Trace representative inputs through decisions, state changes, writes, and outputs. Execute focused tests and counterexamples, compare duplicate implementations, and recompute important results independently.
+- **UX journey:** Use when the request mentions UX, UI, usability, a page, browser testing, user journeys, user flows, end-to-end use, or testing features as a user. Read [references/ux-journey.md](references/ux-journey.md) and test the selected journeys in a real browser when the app is runnable.
+- **Exhaustive hardening:** Use only when explicitly requested. Widen coverage to every reachable feature or risk boundary in scope and apply the selected finding threshold. Exhaustive still means reproducible, not speculative.
+- **Hunch/incident:** Start with the reported symptom and the state transitions around it. Confirm or disprove that before broadening.
+
+Profiles can combine, such as a launch-readiness UX audit. Match effort to the request. Do not silently turn a focused audit into an exhaustive one.
+
+## 3. Map before reading deeply
+
+Build a compact map of:
+
+- entry points and primary user or operator journeys;
+- each selected feature's persona, realistic starting point, goal, action sequence, visible success condition, and recovery path;
+- whether its ordinary use is one-shot or iterative and, when iterative, the repeated input-result-adjustment loop;
+- calls from the target to data stores and outside systems;
+- everything that writes data the target later reads;
+- trust boundaries, auth/tenant boundaries, money movement, and irreversible writes;
+- configuration, feature flags, deployment assumptions, and realistic failure paths;
+- tests and sibling implementations of the same rule.
+
+For a whole project, first inventory routes, features, roles, services, jobs, data stores, and documented workflows. Connect related features into realistic journeys rather than testing pages in isolation. Rank areas by present user reach, business importance, irreversible harm, and recent or complex change. Then deep-read the selected slices. Broadly reading every file before forming a risk model wastes context and lowers judgment quality.
+
+When coverage is "every feature," maintain a coverage matrix with `tested end to end`, `partially tested`, `blocked`, and `not tested`. Never turn sampled pages into a claim of exhaustive product coverage.
+
+Load only the checklist that matches a selected slice:
+
+- HTTP/RPC/GraphQL/webhook boundaries: [references/request-handler.md](references/request-handler.md)
+- Queues, cron, schedulers, and event consumers: [references/async-worker.md](references/async-worker.md)
+- ETL, imports, exports, sync, and reporting: [references/data-pipeline.md](references/data-pipeline.md)
+- SQL, schema, migrations, and query modules: [references/data-layer.md](references/data-layer.md)
+- CLI, maintenance scripts, shared libraries, and SDKs: [references/executable-library.md](references/executable-library.md)
+
+Do not load unrelated checklists.
+
+## 4. Investigate economically
+
+Use the fewest independent workstreams that give meaningful parallel coverage. Delegate when at least two genuinely independent journeys or risk boundaries can be investigated without duplicating repository discovery. A small focused target may need no delegation; an explicit exhaustive audit may justify several workstreams. Never create a workstream to reach a preferred agent count.
+
+Split work by a distinct journey or risk boundary, not by sending several general reviewers over the same files. For important interactive features, pair two perspectives when practical:
+
+- a **black-box journey pass** uses the product as the persona would, without relying on source knowledge to decide what should happen;
+- a **white-box logic pass** traces the same journey through requests, state changes, data writes, jobs, and responses.
+
+The coordinator compares the visible result with the stored or computed result. This paired pass is especially valuable when individual functions work but the transition between features fails. It is optional for a purely visual or polish audit unless saved state or logic affects the visual claim.
+
+Give each agent:
+
+- the lens, coverage, finding threshold, decision context, horizon, and current scale;
+- a bounded flow or file set;
+- numbered claims to confirm or deny;
+- required verdicts: `CONFIRMED`, `PARTIALLY CONFIRMED`, or `NOT AN ISSUE`;
+- a requirement for `file:line` and runtime evidence where available;
+- the affected user or operator, triggering conditions, consequence, and proposed action bucket;
+- for an iterative tool or workspace, a requirement to change an input after the first result and judge input-result continuity at a representative viewport;
+- a stop condition;
+- this instruction: "Apply the selected finding threshold. In important-only mode, do not collect minor observations. In all-reproducible mode, include verified minor issues within the selected lens."
+
+Map centrally before dispatch so agents do not each rediscover the repository. Do not have every agent read all documentation or rerun the same broad test. Merge duplicates by root cause. Treat delegated verdicts as evidence to reconcile, not report-ready conclusions: when browser behavior, screenshots, requests, saved state, logs, tests, or source disagree, inspect the conflict and make the narrowest claim the combined evidence supports. Independently re-derive severe, ambiguous, or stateful claims and every severe number. For a low-risk minor finding, one repeat in the same browser pass with suitable visual evidence is sufficient.
+
+Investigate the cheapest decisive evidence first. Before starting a broad or slow run, identify the material uncertainty it should resolve. If focused evidence already settles the decision and promised coverage, stop; use exhaustive or scale-heavy testing only when the request or a remaining uncertainty calls for it. Stop on a future optimization, pure preference, or unreachable edge case when it falls outside the selected threshold. In an all-reproducible UI audit, continue through the promised visual and interaction states, but distinguish objective inconsistency from subjective design judgment.
+
+Use these checks across all target types when relevant:
+
+- zero, one, empty, missing, duplicate, maximum, and realistic malformed input;
+- dependency failure, timeout, partial success, retry, and recovery;
+- state changes across reload, navigation, tenant/account switch, restart, and duplicate execution;
+- duplicate calculations with different filters, windows, sources, units, rounding, caps, or cache behavior;
+- labels and promises whose semantics differ from the value actually computed;
+- current data that contradicts assumed cardinality, ordering, uniqueness, or scale.
+
+Avoid mechanically testing every theoretical boundary. Prefer boundaries that current inputs, public inputs, imports, integrations, or ordinary user mistakes can actually reach.
+
+## 5. Observe real behavior
+
+Adapt observation to the target: run focused tests, call the endpoint, use the browser, inspect dev or staging data, recompute an aggregate, compare input and output records, examine a query plan, or run a worker with a representative payload.
+
+Static proof is acceptable for a deterministic path whose consequence is unambiguous. Runtime proof is required for UX claims, timing or scale claims, environment-dependent behavior, and claims about what a user actually sees.
+
+For an interactive journey, verify both sides when available: the user-visible state and the underlying request, saved record, emitted event, or computed output. A passing click sequence is not enough when the system silently saved the wrong thing; correct internal logic is not enough when the user cannot discover or complete the sequence.
+
+For a calculator, dashboard, editor, search/filter interface, comparison tool, or configuration workspace, the first valid result is not the end of the journey. Change a meaningful input, inspect the updated output, and compare it with the prior state at a representative working viewport. Check whether the controls, context, and result needed for that loop remain visible together or are reachable with low friction. Scrolling is not itself a defect; report it when repeated travel, lost context, memory burden, or layout movement materially degrades the core loop. A full-page screenshot does not establish good workspace ergonomics.
+
+If the required environment is unavailable, distinguish `verified from code` from `observed at runtime` and lower confidence appropriately. Put runtime evidence in context too: a deliberately disabled, mocked, or missing dependency may prove a genuine recovery weakness without proving that the ordinary product path is broken. Do not present a code-only interface review as a completed UX audit or give a harness-induced failure the priority of a naturally reachable one.
+
+Actively try to disprove every candidate that could be reported under the selected threshold. Record rejected hypotheses internally, but report only the few that answer an explicit hunch or provide important assurance.
+
+## 6. Apply the action gate
+
+Do not use technical severity alone. For every confirmed defect, answer:
+
+1. Who encounters it under the current decision context?
+2. Is the trigger observed, common, easy to reach, rare, or dependent on a future condition?
+3. Does it block completion, produce a wrong decision, lose or expose data, mishandle money, damage trust, exclude a user, create recoverable friction, or merely affect polish?
+4. Can the user recover, and will they understand how?
+5. What valuable work would fixing it displace?
+
+The finding threshold decides whether a low-impact defect appears at all. The action bucket says what to do with a reported defect. Place each reported item in exactly one bucket:
+
+| Bucket | Gate |
 |---|---|
-| **Interface** | page, screen, view, template, component tree |
-| **Request handler** | HTTP route, RPC method, GraphQL resolver, webhook receiver, serverless function |
-| **Async worker** | background job, queue consumer, cron task, scheduler, event handler |
-| **Data pipeline** | ETL, batch aggregation, sync job, import/export, report generator |
-| **Data layer** | SQL scripts, migrations, schema, stored procedures, query modules |
-| **Executable** | CLI command, deployment script, one-off maintenance script |
-| **Library** | reusable module, SDK, internal package, shared helper |
+| **Fix before release / Fix now** | A current or near-term user can plausibly reach it and the consequence is release-blocking, materially wrong, unsafe, irreversible, or seriously trust-damaging. |
+| **Fix next** | It affects current users or operators and creates meaningful repeated friction or failure, but the main goal remains safely achievable. |
+| **Minor / Polish** | Only when the selected threshold includes all reproducible issues. A small logic, visual, interaction, or consistency defect is proven but has limited current consequence. It is optional work, not a release blocker. |
+| **Watch - do not fix yet** | The defect is real, but value appears only after a future load, deployment shape, feature, rare state, or adoption level. Name the measurable trigger that should reopen it. |
+| **Omit** | It is speculative, unreachable, duplicate, unproven, a generic best practice with no demonstrated defect, or outside the requested lens. Pure design preference is omitted unless design judgment was explicitly requested. |
 
-Then load the matching checklist from Step 3.
+"Critical" requires both material impact and a plausible current path. A failure at 10,000 users is not critical for a launch with no evidence that this load is near. The same failure becomes current when measured headroom, growth plans, queue depth, latency, or resource use shows the threshold is approaching.
 
----
+For a capability that is optional, disabled, archived, or not yet offered, make urgency conditional on its activation unless enabling it is part of the current decision. The defect may be real while the work is not yet due.
 
-## Step 2 - Map the target
+Do not promote an issue merely because it is easy to fix. If implementation size is reasonably clear and helps ordering within a bucket, label it `small`, `medium`, or `large`; otherwise omit the estimate rather than guessing.
 
-Assemble the full file set before reading anything deeply:
+## 7. Report for action
 
-- The entry point (what triggers this)
-- Everything it calls, down to the data or the outside world
-- **Everything that WRITES the data this target reads.** This is where defects actually live. A thing showing wrong output is very often correct code reading badly-written data. Auditing the read path alone will miss the real cause.
-- Configuration, environment, feature flags that change its behaviour
-- Tests, if any
-- Sibling implementations of the same logic elsewhere in the repo
+Lead with a one-sentence release or product decision, followed by the assumed context.
 
-Note the language and typing situation. Static types let you find dead exports and shape mismatches cheaply. Dynamic types need manual value tracing.
+Use action headings, not generic technical severity headings:
 
----
-
-## Step 3 - Investigate in parallel
-
-Split into 3-5 independent domains and dispatch one subagent per domain, all in a single message so they run concurrently. Choose domains that fit the target's kind - typically correctness, behaviour/UX or interface contract, lifecycle/state, reliability/failure, and security.
-
-**How to write each subagent prompt.** This framing is the difference between a vague review and a sharp one:
-
-- Give it **specific claims to confirm or deny**, not a general instruction to review. Turn every hunch, every suspicious comment, and everything you noticed while mapping into a numbered claim.
-- Require a verdict per claim: **CONFIRMED / PARTIALLY CONFIRMED / NOT AN ISSUE**.
-- Require `file:line` evidence for every claim. No evidence, no finding.
-- Require a description of **actual current behaviour**, not just "this is wrong".
-- Require it to say **what it tried to prove and could not**.
-- Always end with: **"While reading, report any OTHER defects you find that are not in this list."** This trailing clause reliably produces a large share of the best findings.
-- Tell it to **read the primary files completely**. Grep only finds what you already suspected.
-- Require the symptom in plain language, with the technical cause stated separately.
-
-**Verify your subagents.** Take each headline number or severe claim an agent returns and re-derive it yourself before trusting it. Agents are confident and occasionally wrong. This costs minutes and is what makes the final report trustworthy.
-
-### Universal checklist - apply to every target
-
-- **Boundaries:** zero, one, empty, null, missing, maximum, negative, duplicate, unicode, very large.
-- **Error paths:** what happens when the dependency fails? Is the failure visible, swallowed, or disguised as a normal empty result?
-- **Duplicate implementations:** find every place the same rule or metric is computed and diff them line by line. Any difference is a defect in at least one. Check specifically for different windows, filters, sources, rounding, null handling, and one path cached while another is live.
-- **Units and scales:** is a 0-100 value rendered on a 0-1 scale? Is a raw count driving a percentage? Do two different quantities share one label, axis, or column?
-- **Caps and truncation:** when a set is limited to top N, was the aggregate computed before or after the cut? Does the ranking use the same measure that is displayed?
-- **Time windows:** are all parts of the feature using the same window? Is it anchored consistently?
-- **Comments as assertions:** comments claiming "always", "never", "mirrors X exactly", "guaranteed" are testable. Test them. A false intent comment is both a defect and a signpost to a divergence someone forgot to sync.
-- **Dead code:** an export nothing imports, state written but never read, a handler never called. Each usually means a feature was half-built or silently dropped. Find what it was meant to do.
-
-### Interface
-
-Empty, loading, and error states all present and distinguishable. State reset when the active entity changes (account, project, tenant, brand). Filters, counts, and badges consistent with each other and with what is displayed. Labels matching what is actually computed. Keyboard operability and focus-visible states on every interactive element. Semantic roles on things that behave like buttons, dialogs, checkboxes. Responsive behaviour - what is hidden at small sizes and is anything offered in its place. Styles targeting selectors that no longer exist in the markup. Races from rapid interaction (stale responses overwriting newer ones). Long or hostile content overflowing.
-
-### Request handler
-
-Authorization on **every** entry point, not just the obvious ones - check each handler individually, since gaps cluster in older or less-used routes. Tenant and ownership isolation on both reads and writes. Input validation: malformed identifiers should return a clean not-found, not a server error, and should not flood logs. Unbounded numeric parameters (page size, limit, day range, depth) that let one request consume unbounded memory, time, or storage. Injection at every sink the input reaches - query, shell, path, template, response header, log. Output encoding for the consumer that will actually open it. Result sets with no limit. N+1 queries. Idempotency on anything that writes. Rate limiting on anything expensive.
-
-### Async worker
-
-Retry classification: are permanent failures (bad credentials, billing, quota exhausted, malformed payload) distinguished from transient ones, or does everything go through the same backoff? **Compute the actual worst-case retry duration in wall-clock time and state it.** Timeouts on every outbound call, including the ones the SDK sets by default - find that default and multiply it by the SDK's own internal retries. Terminal-state reconciliation: when a job dies, does its associated record get updated, or is it orphaned? Check every path to death, especially early returns that skip the cleanup. Idempotency and duplicate execution - what happens if the same work is triggered twice. Concurrency guards, and whether they are enforced atomically or computed outside the transaction that acts on them. Multi-instance safety: if more than one copy runs, do they race, and are stale-recovery thresholds longer than the longest legitimate run? Graceful shutdown and draining. Dead-letter handling and whether anything ever cleans up. Head-of-line blocking from batched waits. Errors swallowed into a success status.
-
-### Data pipeline
-
-Deduplication at the point of write, not just at read. Ordering assumptions that the source does not guarantee. Partial-failure semantics - does a mid-run failure leave a half-written result that looks complete? Window and watermark correctness, including boundary records. Divergence between the incremental path and the backfill path. Schema drift and silent type coercion. Aggregate correctness: recompute the output from the source yourself and compare. Records silently dropped by a filter or a join.
-
-### Data layer
-
-Indexes that actually serve the queries being run - check the predicate shape, not just the column name, since a function or expression in the predicate makes a plain index unusable. Foreign key columns without indexes (most engines do not create these automatically). Transaction scope and lock duration. Destructive or irreversible operations without a guard. Migration reversibility and what the down path destroys. NULL semantics in comparisons and aggregates. Integer division, overflow, and rounding. Timezone and date-boundary handling. Recompute any aggregate the code claims and compare it to the real answer.
-
-### Executable
-
-Argument validation and clear failure on bad input. Correct exit codes. Destructive actions without confirmation or dry-run. Path handling, including spaces and traversal. Partial-run state: what is left behind if it dies halfway. Secrets appearing in arguments, logs, or output. stdout versus stderr discipline for anything that will be piped.
-
-### Library
-
-Public surface matching its documentation. Error types that callers can actually discriminate. Resource cleanup on both success and failure paths. Concurrency and reentrancy assumptions. Default values that are wrong for common use. Breaking changes to a published interface.
-
----
-
-## Step 4 - Techniques that find what reading misses
-
-Apply these deliberately. Each has independently produced findings that a straight read-through did not.
-
-**Observe real behaviour.** Do not stop at reading code. Adapt to the target: query the database and recompute the aggregate yourself; call the endpoint; run the worker against a test payload; inspect the job or queue tables for actual outcomes and stuck records; run the query plan; execute the script in a sandbox; compare a pipeline's input count to its output count. This is what converts "the total may not sum correctly" into "it sums to 53%, and here are the 22 rows being hidden." Do it for every number, rate, count, and percentage the target claims.
-
-Read-only always. If you must write, wrap it in a transaction you roll back. **Put scratch scripts in a scratch/temp directory, never in the repo.** If a helper must sit inside the project for module resolution, delete it and verify the working tree before you report.
-
-**Diff duplicate implementations.** See the universal checklist. This is the single most productive technique in codebases that have grown by accretion.
-
-**Git archaeology on divergences.** When two paths disagree, run `git log -S "<identifier>"` on both. Very often a fix landed on one and never on the other. That turns "these disagree" into "here is exactly when and why they diverged", which is what makes it actionable.
-
-**Follow state across boundaries.** Reload, navigate away and back, switch the active entity, restart the process, run two copies. State that fails to reset or reconcile across a boundary is a recurring and very confusing class of defect.
-
-**Check what the data says about the code.** Sort by frequency and look at the top rows. Anomalies surface immediately: a redirect wrapper ranking as a top publisher, one source producing 70% of all records, 88% of a field being a duplicate of another field. These are invisible in code and obvious in data.
-
-**Question the semantics, not just the arithmetic.** A calculation can be perfectly correct and still measure the wrong thing. Ask what each label claims, then check whether the computation actually delivers that claim. Look at real rows and ask whether a human would agree with how they were classified.
-
----
-
-## Step 5 - Verify before reporting
-
-Drop anything you cannot substantiate. For each surviving finding confirm:
-
-- The evidence actually says what the finding claims
-- The symptom is something a real user or operator could encounter, described concretely
-- It is not a duplicate of another finding
-- It is a defect, not a style preference
-
-If several findings share a root cause, report the cause once and note what it affects.
-
----
-
-## Step 6 - Output
-
-Plain rows, ready to paste into a tracker. **One issue per row. Plain English. No file paths, no line numbers, no jargon.**
-
-Each row: what someone would observe, then the cause in plain terms, then a concrete number that proves it.
-
-Group by severity:
-
-```
-### Wrong data
-### Broken behaviour
-### Missing functionality
-### Interface and accessibility        (only if relevant to the target)
-### Security
-### Found outside <target>             (only if you strayed - see below)
-### Ruled out
+```text
+## Fix before release
+## Fix next
+## Minor and polish issues
+## Watch - do not fix yet
+## Coverage and limits
+## Ruled out
 ```
 
-**Found outside the target.** Following a thread out of the audited unit is allowed and often valuable, but report those findings under their own heading so the reader knows the boundary moved.
+Omit empty headings. Use `Minor and polish issues` only when the selected finding threshold includes them. In blocker or important-only audits, do not enumerate filtered minor candidates or report how many were discarded unless asked. Include a `Watch` item only when it is a material, proven future risk with a concrete trigger worth monitoring.
 
-**Ruled out.** List the plausible defects you specifically checked and disproved, with the evidence. Two or three lines. This is not padding - it stops someone re-investigating the same dead ends.
+Each issue should be understandable as one tracker-ready row:
 
-Style rules:
+> **Short outcome-focused title - action bucket.** Who encounters it and during which journey; what they observe; the proven cause or evidence in plain language; why it belongs in this bucket now.
 
-- Symptom first, cause second.
-- Include real numbers whenever you have them. "Currently 81 runs stuck since 26 June" beats "some runs get stuck".
-- No file names, function names, line numbers, or library names in the rows.
-- No fix instructions. Describe the problem. One closing sentence is acceptable if the fix is genuinely obvious; never a plan.
-- One to three sentences per row. If it needs more, it is probably two issues.
-- Do not pad. Twelve real issues beat forty with filler.
-- Never use em-dashes. Use a hyphen with spaces.
+Use real counts, timings, steps, or affected records when they strengthen the decision. Do not force a number into qualitative UX evidence. Keep code locations in compact evidence notes only when the audience needs them; do not make the user decode file names or implementation jargon to understand the issue.
 
-Close with two or three sentences: what is in good shape, and which single fix delivers the most value.
+When future risks are within the requested horizon, `Watch` items must say `Do not schedule yet` and include a trigger such as measured p95 latency, queue depth, data volume, tenant count, a planned feature, or a deployment change. They are risk-register entries, not active tickets. Omit the section when the user explicitly excludes future concerns.
 
----
+`Coverage and limits` names the personas, journeys, features, states, devices or viewports, and boundaries actually tested, the evidence source, and any material area not tested. For every-feature coverage, summarize the coverage matrix and identify blocked or partial journeys. It must not imply whole-project certainty from sampled coverage.
+
+`Ruled out` is limited to explicit hunches and a few high-value checks that were genuinely disproved. It is not padding.
+
+Close with what is in good shape and the single highest-value action. Never recommend fixing everything before shipping.
+
+## 8. Optional resolution planning
+
+Enter this phase only when the user explicitly asks to resolve, design fixes for, or prepare implementation from an existing audit. Read [references/resolution-planning.md](references/resolution-planning.md).
+
+Freeze the audit backlog before planning. Re-verify each finding against the current project, then work through one issue or genuinely coupled root-cause cluster at a time. Keep stable issue IDs and record the evidence, desired behavior, recommended approach, tradeoffs, touchpoints, dependencies, acceptance tests, and deferred boundaries in a resolution ledger. Do not describe a recommendation as approved until the user approves it.
+
+Keep the target worktree unchanged. Put temporary probes, fixtures, scripts, logs, screenshots, caches, and test artifacts in an external disposable location; run in a disposable copy when the toolchain cannot avoid writing to the target. A user-requested resolution document is the only permitted planning output and should live outside the audited worktree by default.
+
+After every selected issue has a disposition, consolidate the briefs into a dependency-ordered implementation handoff. Stop before implementation. Editing application code, tests, configuration, schemas, or data requires a separate implementation request. If audit and resolution planning were requested together, finish and freeze the audit before beginning this phase rather than mixing discovery with solution design.
+
+## Stop conditions
+
+Stop when all of the following are true:
+
+- the promised primary journeys or risk boundaries were exercised;
+- reportable candidates were verified to the evidence level appropriate for their impact and deduplicated; severe, ambiguous, and stateful claims received independent re-verification;
+- remaining leads fall outside the selected lens or threshold; in all-reproducible mode, the promised feature and UI-state inventory has been covered;
+- coverage limits are known and can be stated honestly.
+
+Do not continue because the report looks short. A short report can be the strongest release signal.
 
 ## Anti-patterns
 
-- **Auditing several targets at once.** Depth collapses. One per run.
-- **Grepping instead of reading.** You will only confirm what you already suspected.
-- **Reporting hypotheses.** If you cannot prove it, do not write it.
-- **Skipping the observation step** because reading felt sufficient. It is not. The strongest findings come from comparing claimed behaviour to actual behaviour.
-- **Trusting a subagent's headline number** without re-deriving it.
-- **Auditing only the read path** when the defect is in what wrote the data.
-- **Using the wrong checklist** because you skipped classification.
-- **Fixing things.** This skill reports.
-- **Lint-level padding.** Naming, formatting, and import order are not findings unless they cause a real defect.
-- **Reporting dead code by itself.** Report it when it has a live effect, or when it reveals a dropped feature.
+- Treating every confirmed issue as immediate work.
+- Calling theoretical maximum impact "critical" without a plausible current trigger.
+- Dispatching a fixed number of agents regardless of scope.
+- Giving every agent the whole repository and the same open-ended prompt.
+- Ending prompts with an unrestricted request for "any other issues."
+- Auditing UI from source code or screenshots without completing user journeys.
+- Treating one successful run as sufficient for a tool whose normal use requires revising inputs and comparing results.
+- Using a full-page screenshot to judge workspace ergonomics without exercising the loop at a realistic viewport.
+- Filtering minor UI findings after the user explicitly requested exhaustive UI or polish coverage.
+- Reporting minor polish as a release blocker merely because it was requested.
+- Using an accessibility-tree snapshot as proof of color, spacing, overlap, or other pixel-level behavior.
+- Inheriting a browser tool's fixed issue target or source-inspection ban instead of following this audit's intent.
+- Deep-reading the whole repository before deciding which current risks matter.
+- Confusing missing best practice, dead code, or optimization opportunity with a user-facing defect.
+- Fixing the project during an audit or resolution-planning phase.
